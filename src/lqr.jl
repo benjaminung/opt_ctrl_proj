@@ -51,6 +51,9 @@ end
 
 get_k(controller::LQRController, t) = searchsortedlast(controller.times, t)
 
-function get_control(controller::LQRController, x, k)
-  return controller.Uref[k] - controller.K[k]*get_Δx̃(x, controller.Xref[k])
+function get_control(controller::LQRController, x, k, min_u=-Inf, max_u=Inf)
+  u = controller.Uref[k] - controller.K[k]*get_Δx̃(x, controller.Xref[k])
+  u = min.(u, max_u)
+  u = max.(u, min_u)
+  return u
 end

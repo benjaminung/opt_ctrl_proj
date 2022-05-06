@@ -18,8 +18,8 @@ function Quadrotor()
   g = 9.81
   kt = 1.0
   km = 0.0245
-  max_thrust = 0.6*m*g
-  min_thrust = 0.1*m*g
+  max_thrust = 2.5*(m*g/4.0)
+  min_thrust = 0.3*(m*g/4.0)
   Quadrotor(m,ℓ,J,g,kt,km,max_thrust,min_thrust)
 end
 

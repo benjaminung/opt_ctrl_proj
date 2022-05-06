@@ -45,5 +45,6 @@ end
 function initialize_visualizer()
     vis = Visualizer()
     set_mesh!(vis)
+    setprop!(vis["/Cameras/default/rotated/<object>"], "position", [30, 0, 0])
     return vis
 end
