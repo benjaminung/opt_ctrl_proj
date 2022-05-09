@@ -7,8 +7,12 @@ struct Quadrotor
   g::Float64  # gravity acceleration [m/s^2]
   kt::Float64  # force constant
   km::Float64  # torque constant
-  max_thrust::Float64
-  min_thrust::Float64
+  max_thrust::Float64 # max thrust for each rotor
+  min_thrust::Float64 # min thrust for each rotor
+  max_pitch::Float64 # radians
+  min_pitch::Float64 
+  max_roll::Float64
+  min_roll::Float64
 end
 
 function Quadrotor()
@@ -20,7 +24,11 @@ function Quadrotor()
   km = 0.0245
   max_thrust = 2.5*(m*g/4.0)
   min_thrust = 0.3*(m*g/4.0)
-  Quadrotor(m,ℓ,J,g,kt,km,max_thrust,min_thrust)
+  max_pitch = pi/2.0
+  min_pitch = -pi/2.0
+  max_roll = pi/2.0
+  min_roll = pi/2.0
+  Quadrotor(m,ℓ,J,g,kt,km,max_thrust,min_thrust,max_pitch,min_pitch,max_roll,min_roll)
 end
 
 function quad_dynamics(quad::Quadrotor,x,u)
@@ -41,8 +49,8 @@ function quad_dynamics(quad::Quadrotor,x,u)
   ṙ = Q*v
   q̇ = 0.5*Lmult(q)*H*ω
   
-  # v̇ = Q'*[0; 0; -g] + (1/m)*[zeros(2,4); kt*ones(1,4)]*u - hat(ω)*v # body velocity
-  v̇ = [0; 0; -g] + Q*(1/m)*[zeros(2,4); kt*ones(1,4)]*u - Q*hat(ω)*v # world velocity
+  v̇ = Q'*[0; 0; -g] + (1/m)*[zeros(2,4); kt*ones(1,4)]*u - hat(ω)*v # body velocity
+  # v̇ = [0; 0; -g] + Q*(1/m)*[zeros(2,4); kt*ones(1,4)]*u - Q*hat(ω)*v # world velocity
   
   ω̇ = J\(-hat(ω)*J*ω + [0 ℓ*kt 0 -ℓ*kt; -ℓ*kt 0 ℓ*kt 0; km -km km -km]*u)
   

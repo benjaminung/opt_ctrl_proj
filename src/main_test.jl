@@ -31,11 +31,12 @@ Uref_blue = [zeros(4) for i=1:length(times)]
 # A, B = get_Ã_B̃(red, xeq_red, ueq_red, red_cost_Q̃, red_cost_R, dt) 
 ueq_red = [0.0, 0.0, 0.0, 0.0] #.+ red.m*red.g/4.0
 
-Xref_red = [copy(x0_red) for i=1:length(times)]
-Xeq_red = [copy(xeq_red) for i=1:length(times)]
 Ueq_red = [copy(ueq_red) for i=1:length(times)]
 
+x0_red = [0.0, 100.0, 100.0, 1.0, 0.0, 0.0, 0.0, -20.0, -40.0, 0.0, 0.0, 0.0, 0.0]
 xeq_1_red = [-20.0, 60.0, 100.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+Xref_red = [copy(x0_red) for i=1:length(times)]
+Xeq_red = [copy(xeq_red) for i=1:length(times)]
 A1, B1 = get_Ã_B̃(red, xeq_1_red, ueq_red, red_cost_Q̃, red_cost_R, dt)
 # xeq_2_red = [-20.0, 60.0, 60.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -20.0, 0.0, 0.0, 0.0]
 # A2, B2 = get_Ã_B̃(red, xeq_2_red, ueq_red,red_cost_Q̃, red_cost_R, dt)
@@ -45,29 +46,29 @@ A1, B1 = get_Ã_B̃(red, xeq_1_red, ueq_red, red_cost_Q̃, red_cost_R, dt)
 red_K = [zeros(size(B1')) for i=1:length(times)]
 
 Uref_red = [zeros(4) for i=1:length(times)]
-for i=1:50
+for i=1:51
   Xref_red[i][8:10] .= [-20.0, -40.0, 0.0]
-  Xeq_red[i] = [-20.0, 60.0, 100.0, 1.0, 0.0, 0.0, 0.0, -20.0, -40.0, 0.0, 0.0, 0.0, 0.0]
+  Xeq_red[i] = [-20.0, 60.0, 100.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 end
 red_K[1:50], = riccati(A1, B1, red_cost_Q̃, red_cost_R, red_cost_Q̃, 51)
 
-for i=51:150
-  Xref_red[i][8:10] .= [0.0, 0.0, -20.0]
-  Xeq_red[i] = [-20.0, 60.0, 60.0, 1.0, 0.0, 0.0, 0.0, -20.0, 0.0, 0.0, 0.0, 0.0]
-end
-red_K[51:150], = riccati(A2, B2, red_cost_Q̃, red_cost_R, red_cost_Q̃, 101)
+# for i=51:150
+#   Xref_red[i][8:10] .= [0.0, 0.0, -20.0]
+#   Xeq_red[i] = [-20.0, 60.0, 60.0, 1.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+# end
+# red_K[51:150], = riccati(A2, B2, red_cost_Q̃, red_cost_R, red_cost_Q̃, 101)
 
-for i=151:200
-  Xref_red[i][8:10] .= [20.0, 0.0, 0.0]
-  Xeq_red[i] = [0.0, 60.0, 60.0, 1.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 0.0]
-end
-red_K[151:200], = riccati(A3, B3, red_cost_Q̃, red_cost_R, red_cost_Q̃, 51)
-red_K[201:501], = riccati(A, B, red_cost_Q̃, red_cost_R, red_cost_Q̃, 302)
+# for i=151:200
+#   Xref_red[i][8:10] .= [20.0, 0.0, 0.0]
+#   Xeq_red[i] = [0.0, 60.0, 60.0, 1.0, 0.0, 0.0, 0.0, 0.0, -10.0, -10.0, 0.0, 0.0, 0.0]
+# end
+# red_K[151:200], = riccati(A3, B3, red_cost_Q̃, red_cost_R, red_cost_Q̃, 51)
+# red_K[201:501], = riccati(A, B, red_cost_Q̃, red_cost_R, red_cost_Q̃, 302)
 
-for i=1:length(times)-1
-  Xref_red[i+1][1:3] .= Xref_red[i][1:3] + Xref_red[i][8:10] * (times[i+1]-times[i])
-  Xref_blue[i+1] = quad_dynamics_rk4(blue, Xref_blue[i], [1.23625, 1.23625, 1.23625, 1.23625], times[i+1]-times[i])
-end
+# for i=1:length(times)-1
+#   Xref_red[i+1][1:3] .= Xref_red[i][1:3] + Xref_red[i][8:10] * (times[i+1]-times[i])
+#   Xref_blue[i+1] = quad_dynamics_rk4(blue, Xref_blue[i], [1.23625, 1.23625, 1.23625, 1.23625], times[i+1]-times[i])
+# end
 
 red_lqr = LQRController(red_K, times, Xeq_red, Ueq_red, false)
 

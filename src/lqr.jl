@@ -1,3 +1,6 @@
+using ForwardDiff
+using ControlSystems
+
 struct LQRController
   K::Vector{Matrix{Float64}}   # feedback gains ((m,n),N-1)
   times::Vector{Float64}       # times          (N,)

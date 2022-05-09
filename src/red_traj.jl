@@ -31,6 +31,7 @@ function red_traj(red::Quadrotor, times, redTraj::RedTraj=const_vel, frequency=0
 
   red_lqr = LQRController(red_K, times, Xref_red, Uref_red)
 
+  x0_red = Xref_red[1]
   X_red = [copy(x0_red) for i=1:length(times)]
   U_red = [copy(uhover) for i=1:length(times)-1]
 
