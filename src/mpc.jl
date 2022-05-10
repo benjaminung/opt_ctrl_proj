@@ -41,16 +41,13 @@ function get_control(ctrl::MPCController{OSQP.Model}, x, time, Q, Qf, A)
   # Solve QP
   results = OSQP.solve!(ctrl.solver)
   Δu = results.x[1:4]
-  println(Δu)
+  # println(Δu)
   
   k = get_k(ctrl, time)
   return ctrl.Uref[end] + Δu 
 end
 
 function buildQP_constrained!(quad::Quadrotor, ctrl::MPCController, A,B,Q,R,Qf; kwargs...)
-  # TODO: Implement this method to build the QP matrices
-  
-  # SOLUTION:
   Nt = ctrl.Nmpc-1
   Nx = length(ctrl.Xref[1])-1    # number of states in x̃
   Nu = length(ctrl.Uref[1])    # number of controls
@@ -97,17 +94,12 @@ function buildQP_constrained!(quad::Quadrotor, ctrl::MPCController, A,B,Q,R,Qf; 
   ctrl.ub .= ub
   ctrl.lb .= lb
   
-  # Initialize the included solver
-  #    If you want to use your QP solver, you should write your own
-  #    method for this function
+  # Initialize the solver
   initialize_solver!(ctrl; kwargs...)
   return nothing
 end
 
 function updateQP_constrained!(ctrl::MPCController, x, time, Q, Qf, A)
-  # TODO: Implement this method
-  
-  # SOLUTION
   t = get_k(ctrl, time)
   
   Nt = ctrl.Nmpc-1             # horizon
@@ -179,11 +171,12 @@ function simulate(model::Quadrotor, x0, ctrl, Q, R, Qf, A, redTraj; tf=ctrl.time
   tstart = time_ns()
   local intercept_k = 0
   for k = 1:N-1
-    ctrl.Xref[end][1:3] = get_intercept_point(redTraj[k])
+    int_pos, int_vel = get_intercept_point_vel(redTraj[k])
+    ctrl.Xref[end][1:3] = int_pos
+    ctrl.Xref[end][8:10] = int_vel
     A, B = get_Ã_B̃(model, ctrl.Xref[end], ctrl.Xref[end], ctrl.Uref[end], Q, R, dt)
     buildQP_constrained!(model, ctrl, A, B, Q, R, Q)
     U[k] = get_control(ctrl, X[k], times[k], Q, Qf, A)
-    # u = clamp(U[k], umin, umax)
     X[k+1] = quad_dynamics_rk4(model, X[k], U[k], dt)
     intercepted = interception_check(X[k+1], redTraj[k])
     if intercepted
@@ -214,11 +207,18 @@ function simulate_one_step(model::Quadrotor, x0, ctrl, Q, Qf, A, k; tf=ctrl.time
   return X,U,times
 end
 
-function get_intercept_point(x_red, distance=20.0)
+function get_intercept_point_vel(x_red, distance=20.0)
   red_pos = copy(x_red[1:3])
-  red_pos_unit = red_pos/norm(red_pos)
-  intercept_point = red_pos_unit*distance
-  return intercept_point
+  red_world_vel = body_to_world_vel(x_red)
+  if norm(red_pos) > 20.0
+    red_pos_unit = red_pos/norm(red_pos)
+    intercept_point = red_pos_unit*distance
+    intercept_vel = red_world_vel - red_pos_unit*dot(red_world_vel, red_pos_unit)
+    intercept_vel = intercept_vel * distance/norm(red_pos)
+    return intercept_point, intercept_vel
+  else
+    return red_pos, red_world_vel
+  end
 end
 
 function interception_check(x_blue, x_red, tolerance=2.0)

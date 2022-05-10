@@ -30,26 +30,6 @@ function point_dynamics_rk4(point::Point, x, u, h)
   return xn
 end
 
-# function update_xref_point!(ctrl::MPCController, x, time, dt, xeq, time_eq)
-#   t = get_k(ctrl, time)
-#   # println(t)
-#   teq = get_k(ctrl, time_eq)
-#   # println(teq)
-#   vel = (copy(xeq[1:3]) - copy(x[1:3]))/(time_eq-time)
-#   # println(vel)
-#   for k=t:teq - 1
-#     ctrl.Xref[k][4:6] = copy(vel)
-#     ctrl.Xref[k+1][1:3] = copy(ctrl.Xref[k][1:3]) + copy(ctrl.Xref[k][4:6])*dt
-#   end
-#   if teq < length(ctrl.times)
-#     ctrl.Xref[teq][4:6] = [0.0, 0.0, 0.0]
-#     for k=teq:length(ctrl.times)-1
-#       ctrl.Xref[k+1][1:3] = copy(xeq[1:3])
-#       ctrl.Xref[k+1][4:6] = [0.0, 0.0, 0.0]
-#     end
-#   end
-# end
-
 function get_control_point(ctrl::MPCController{OSQP.Model}, x, time, Q, R, Qf, A)
   # Update the QP
   updateQP_constrained_point!(ctrl, x, time, Q, R, Qf, A)
@@ -65,16 +45,11 @@ function get_control_point(ctrl::MPCController{OSQP.Model}, x, time, Q, R, Qf, A
 end
 
 function buildQP_constrained_point!(point::Point, ctrl::MPCController, A,B,Q,R,Qf; kwargs...)
-  # TODO: Implement this method to build the QP matrices
   n = length(ctrl.Xref[1])
   # SOLUTION:
   Nt = ctrl.Nmpc-1
   Nx = length(ctrl.Xref[1])    # number of states in x̃
   Nu = length(ctrl.Uref[1])    # number of controls
-
-  # local ABs
-  # for i=1:Nt-1
-  #   [zeros(Nx, Nu*i+(Nx+Nu)*(i-1)) A B -I
   
   H = sparse([kron(Diagonal(I,Nt-1),[R zeros(Nu,Nx); zeros(Nx,Nu) Q]) zeros((Nx+Nu)*(Nt-1), Nx+Nu); zeros(Nx+Nu,(Nx+Nu)*(Nt-1)) [R zeros(Nu,Nx); zeros(Nx,Nu) Qf]])
   b = zeros(Nt*(Nx+Nu))
@@ -113,9 +88,7 @@ function buildQP_constrained_point!(point::Point, ctrl::MPCController, A,B,Q,R,Q
   ctrl.ub .= ub
   ctrl.lb .= lb
   
-  # Initialize the included solver
-  #    If you want to use your QP solver, you should write your own
-  #    method for this function
+  # Initialize the solver
   initialize_solver!(ctrl; kwargs...)
   return nothing
 end
@@ -139,30 +112,15 @@ function updateQP_constrained_point!(ctrl::MPCController, x, time, Q, R, Qf, A)
   N = length(ctrl.Xref)
   for t_h = 1:(Nt-1)
     if (t+t_h) <= N
-      # b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*(xref[t+t_h] - xeq)
-      # println(size(b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)]))
-      # println(size(-Q*(xref[t+t_h]-xeq)))
-      # b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*(xref[t+t_h]-xeq)
       b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*(xeq)
-      # b[((t_h-1)*(Nx+Nu)).+(1:Nu)] .= -R*(ueq)
     else
-      # b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*(xref[end] - xeq)
-      # b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*(xref[end]-xeq)
       b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*(xeq)
-      # b[((t_h-1)*(Nx+Nu)).+(1:Nu)] .= -R*(-ueq)
     end
   end
   if (t+Nt) <= N
-    # b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*(xref[t+Nt] - xeq)
-    # println(size(-Qf))
-    # b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*(xref[t+Nt]-xeq)
     b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*(xeq)
-    # b[((Nt-1)*(Nx+Nu)).+(1:Nu)] .= -R*(ueq)
   else
-    # b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*(xref[end] - xeq)
-    # b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*(xref[end]-xeq)
     b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*(xeq)
-    # b[((Nt-1)*(Nx+Nu)).+(1:Nu)] .= -R*(ueq)
   end
   
   # Update the initial condition
@@ -193,7 +151,6 @@ function simulate_point(model::Point, x0, ctrl, Q, R, Qf, A; tf=ctrl.times[end],
       buildQP_constrained_point!(point, ctrl, A, B, Q, R, Qf)
     end
     U[k] = get_control_point(ctrl, X[k], times[k], Q, R, Qf, A)
-    # u = clamp(U[k], umin, umax)
     X[k+1] = point_dynamics_rk4(model, X[k], U[k], dt)
   end
   tend = time_ns()
@@ -207,7 +164,6 @@ function simulate_one_step_point(model::Point, x0, ctrl, Q, R, Qf, A, k; tf=ctrl
 
   tstart = time_ns()
   U = get_control_point(ctrl, x0, times[k], Q, R, Qf, A)
-  # u = clamp(U[k], umin, umax)
   X = point_dynamics_rk4(model, x0, U, dt)
   tend = time_ns()
   rate = (tend - tstart) * 1e9

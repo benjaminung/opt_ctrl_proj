@@ -1,6 +1,8 @@
 @enum RedTraj begin
   const_vel
   zig_zag_z
+  zig_zag_x
+  zig_zag_y
 end
 
 function red_traj(red::Quadrotor, times, redTraj::RedTraj=const_vel, frequency=0.2, amplitude=5.0)
@@ -19,6 +21,10 @@ function red_traj(red::Quadrotor, times, redTraj::RedTraj=const_vel, frequency=0
     Xref_red = red_Xref_constant_vel(times, pos0)
   elseif redTraj == zig_zag_z
     Xref_red = red_Xref_zig_zag_z(times, pos0, frequency, amplitude)
+  elseif redTraj == zig_zag_x
+    Xref_red = red_Xref_zig_zag_x(times, pos0, frequency, amplitude)
+  elseif redTraj == zig_zag_y
+    Xref_red = red_Xref_zig_zag_y(times, pos0, frequency, amplitude)
   end
 
   A = [zeros(12,12) for i=1:length(times)-1]
@@ -71,6 +77,42 @@ function red_Xref_zig_zag_z(times, initial_position, frequency=0.2, amplitude=5.
   Xref_red = [copy(x0_red) for i=1:length(times)]
   for i=1:length(times)-1
     Xref_red[i][10] = copy(Xref_red[i][10]) + amplitude*cos(2*pi*times[i]*frequency + pi)
+    xref = copy(Xref_red[i])
+    Xref_red[i+1][1:3] = xref[1:3] + Xref_red[i][8:10] * dt
+  end
+
+  return Xref_red
+end
+
+function red_Xref_zig_zag_y(times, initial_position, frequency=0.2, amplitude=5.0)
+  dt = times[2]-times[1]
+
+  quat0 = [1.0,  0.0,  0.0,  0.0]
+  velocity0 = -initial_position/times[end]
+  ω0 = [0.0,  0.0,  0.0]
+
+  x0_red = [initial_position; quat0; velocity0; ω0]
+  Xref_red = [copy(x0_red) for i=1:length(times)]
+  for i=1:length(times)-1
+    Xref_red[i][9] = copy(Xref_red[i][9]) + amplitude*cos(2*pi*times[i]*frequency + pi)
+    xref = copy(Xref_red[i])
+    Xref_red[i+1][1:3] = xref[1:3] + Xref_red[i][8:10] * dt
+  end
+
+  return Xref_red
+end
+
+function red_Xref_zig_zag_x(times, initial_position, frequency=0.2, amplitude=5.0)
+  dt = times[2]-times[1]
+
+  quat0 = [1.0,  0.0,  0.0,  0.0]
+  velocity0 = -initial_position/times[end]
+  ω0 = [0.0,  0.0,  0.0]
+
+  x0_red = [initial_position; quat0; velocity0; ω0]
+  Xref_red = [copy(x0_red) for i=1:length(times)]
+  for i=1:length(times)-1
+    Xref_red[i][8] = copy(Xref_red[i][8]) + amplitude*cos(2*pi*times[i]*frequency + pi)
     xref = copy(Xref_red[i])
     Xref_red[i+1][1:3] = xref[1:3] + Xref_red[i][8:10] * dt
   end

@@ -11,7 +11,10 @@ red = Quadrotor()
 
 times = LinRange(0, 20, 1001)
 
+X_red = red_traj(red, times, const_vel)
 X_red = red_traj(red, times, zig_zag_z, 0.2, 6)
+X_red = red_traj(red, times, zig_zag_y, 0.2, 5)
+X_red = red_traj(red, times, zig_zag_x, 0.2, 5)
 
 blue_cost_Q̃ = Diagonal([10, 10, 10, 1, 1, 1, 10, 10, 10, 1, 1, 1])
 blue_cost_R = Diagonal([0.1, 0.1, 0.1, 0.1])
@@ -42,6 +45,8 @@ x_next_test, u_test, = simulate_one_step(blue, x0_blue, mpc_blue, blue_cost_Q̃,
 
 vis = initialize_visualizer()
 visualize!(vis, times_sim[end], X_blue, X_red_sim)
+visualize!(vis, times[end], Xref_blue, X_red)
+
 
 #############
 x_red_next = copy(X_red[1])
