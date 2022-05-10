@@ -31,6 +31,10 @@ function rptoq(ϕ)
   (1/sqrt(1+ϕ'*ϕ))*[1; ϕ]
 end
 
+function x_to_x̃(x)
+  [x[1:3]; qtorp(x[4:7]); x[8:13]]
+end
+
 function qtorp(q)
   q[2:4]/q[1]
 end

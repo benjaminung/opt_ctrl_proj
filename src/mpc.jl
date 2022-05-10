@@ -44,7 +44,7 @@ function get_control(ctrl::MPCController{OSQP.Model}, x, time, Q, Qf, A)
   println(Δu)
   
   k = get_k(ctrl, time)
-  return ctrl.Uref[k] + Δu 
+  return ctrl.Uref[end] + Δu 
 end
 
 function buildQP_constrained!(quad::Quadrotor, ctrl::MPCController, A,B,Q,R,Qf; kwargs...)
@@ -62,7 +62,7 @@ function buildQP_constrained!(quad::Quadrotor, ctrl::MPCController, A,B,Q,R,Qf; 
           zeros(Nx*(Nt-1),Nu) [kron(Diagonal(I,Nt-1), [A B]) zeros((Nt-1)*Nx,Nx)] + [zeros((Nt-1)*Nx,Nx) kron(Diagonal(I,Nt-1),[zeros(Nx,Nu) Diagonal(-I,Nx)])]
   ])
   Z = kron(Diagonal(I,Nt), [0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0]) #Matrix that picks out all x2 (height), for floor constraint
-  Θ = kron(Diagonal(I,Nt), [0 0 0 0 0 0 0 1 1 1 0 0 0 0 0 0]) #Matrix that picks out the rodrigues param, for constraint to keep all euler rotation angles under 90 degrees
+  Θ = kron(Diagonal(I,Nt), [zeros(3, Nu + 3) I zeros(3, 6)]) #Matrix that picks out the rodrigues param, for constraint to keep all euler rotation angles under 90 degrees
   U = kron(Diagonal(I,Nt), [I zeros(Nu,Nx)]) #Matrix that picks out all u, for thrust constraints
   D = [C; Z; Θ; U]
   
@@ -71,12 +71,12 @@ function buildQP_constrained!(quad::Quadrotor, ctrl::MPCController, A,B,Q,R,Qf; 
   ub_floor = Inf*ones(Nt)
 
   # each part of rp needs to be between -1 and 1 to keep quadrotor euler angles between -90 and 90 degrees
-  lb_angle = -ones(Nt)
-  ub_angle = ones(Nt)
+  lb_angle = kron(ones(Nt), -ones(3))
+  ub_angle = kron(ones(Nt), ones(3))
 
   # thrust constraints
-  umin = [copy(quad.min_thrust) for i=1:Nu]
-  umax = [copy(quad.max_thrust) for i=1:Nu]
+  umin = [copy(quad.min_thrust) for i=1:Nu] - ctrl.Uref[end]
+  umax = [copy(quad.max_thrust) for i=1:Nu] - ctrl.Uref[end]
   lb_thrust = kron(ones(Nt),umin)
   ub_thrust = kron(ones(Nt),umax)
 
@@ -124,23 +124,23 @@ function updateQP_constrained!(ctrl::MPCController, x, time, Q, Qf, A)
   for t_h = 1:(Nt-1)
     if (t+t_h) <= N
       # b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*(xref[t+t_h] - xeq)
-      b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*get_Δx̃(xref[t+t_h],xeq)
+      b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*x_to_x̃(xeq)
     else
       # b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*(xref[end] - xeq)
-      b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*get_Δx̃(xref[end],xeq)
+      b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*x_to_x̃(xeq)
     end
   end
   if (t+Nt) <= N
     # b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*(xref[t+Nt] - xeq)
-    b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*get_Δx̃(xref[t+Nt],xeq)
+    b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*x_to_x̃(xeq)
   else
     # b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*(xref[end] - xeq)
-    b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*get_Δx̃(xref[end],xeq)
+    b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*x_to_x̃(xeq)
   end
   
   # Update the initial condition
-  lb[1:Nx] .= -A*get_Δx̃(x,xeq)
-  ub[1:Nx] .= -A*get_Δx̃(x,xeq)
+  lb[1:Nx] .= -A*x_to_x̃(x)
+  ub[1:Nx] .= -A*x_to_x̃(x)
 
   return nothing
 end
