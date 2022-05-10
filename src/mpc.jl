@@ -28,38 +28,32 @@ function OSQPController(n::Integer, m::Integer, N::Integer, Nref::Integer=N, Nd:
   MPCController{OSQP.Model}(P,q, A,lb,ub, N, solver, Xref, Uref, tref)
 end
 
-function initialize_solver!(ctrl::MPCController{OSQP.Model}; tol=1e-6, verbose=false)
+function initialize_solver!(ctrl::MPCController{OSQP.Model}; tol=1e-6, verbose=true)
   OSQP.setup!(ctrl.solver, P=ctrl.P, q=ctrl.q, A=ctrl.A, l=ctrl.lb, u=ctrl.ub, 
       verbose=verbose, eps_rel=tol, eps_abs=tol, polish=1)
 end
 
-function get_control(ctrl::MPCController{OSQP.Model}, x, time)
+function get_control(ctrl::MPCController{OSQP.Model}, x, time, Q, Qf, A)
   # Update the QP
-  updateQP_constrained!(ctrl, x, time)
+  updateQP_constrained!(ctrl, x, time, Q, Qf, A)
   OSQP.update!(ctrl.solver, q=ctrl.q, l=ctrl.lb, u=ctrl.ub)
 
   # Solve QP
   results = OSQP.solve!(ctrl.solver)
   Δu = results.x[1:4]
+  println(Δu)
   
   k = get_k(ctrl, time)
   return ctrl.Uref[k] + Δu 
 end
 
-function buildQP_constrained!(ctrl::MPCController, A,B,Q,R,Qf; kwargs...)
+function buildQP_constrained!(quad::Quadrotor, ctrl::MPCController, A,B,Q,R,Qf; kwargs...)
   # TODO: Implement this method to build the QP matrices
   
   # SOLUTION:
   Nt = ctrl.Nmpc-1
-  Nx = length(ctrl.Xref[1])    # number of states
+  Nx = length(ctrl.Xref[1])-1    # number of states in x̃
   Nu = length(ctrl.Uref[1])    # number of controls
-
-  max_roll = ctrl.max_roll
-  min_roll = ctrl.min_roll
-  max_pitch = ctrl.max_pitch
-  min_pitch = ctrl.min_pitch
-  xeq = Xref[end]
-  aeq = xeq[7:8]  # actuators
   
   H = sparse([kron(Diagonal(I,Nt-1),[R zeros(Nu,Nx); zeros(Nx,Nu) Q]) zeros((Nx+Nu)*(Nt-1), Nx+Nu); zeros(Nx+Nu,(Nx+Nu)*(Nt-1)) [R zeros(Nu,Nx); zeros(Nx,Nu) Qf]])
   b = zeros(Nt*(Nx+Nu))
@@ -67,15 +61,27 @@ function buildQP_constrained!(ctrl::MPCController, A,B,Q,R,Qf; kwargs...)
           [B -I zeros(Nx,(Nt-1)*(Nu+Nx))]; 
           zeros(Nx*(Nt-1),Nu) [kron(Diagonal(I,Nt-1), [A B]) zeros((Nt-1)*Nx,Nx)] + [zeros((Nt-1)*Nx,Nx) kron(Diagonal(I,Nt-1),[zeros(Nx,Nu) Diagonal(-I,Nx)])]
   ])
-  Z = kron(Diagonal(I,Nt), [0 0 1 0 0 0 0 0 0 0 0 0]) #Matrix that picks out all x2 (height), for don't go through floor constraint
-  Θ = kron(Diagonal(I,Nt), [0 0 0 1 1 1 0 0 0 0 0 0]) #Matrix that picks out the rodrigues param, for pitch and roll constraint
-  U = kron(Diagonal(I,Nt), [zeros(Nu,Nx) I]) #Matrix that picks out all u
+  Z = kron(Diagonal(I,Nt), [0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0]) #Matrix that picks out all x2 (height), for floor constraint
+  Θ = kron(Diagonal(I,Nt), [0 0 0 0 0 0 0 1 1 1 0 0 0 0 0 0]) #Matrix that picks out the rodrigues param, for constraint to keep all euler rotation angles under 90 degrees
+  U = kron(Diagonal(I,Nt), [I zeros(Nu,Nx)]) #Matrix that picks out all u, for thrust constraints
   D = [C; Z; Θ; U]
   
-  umin = ctrl.min_thrust
-  umax = ctrl.max_thrust
-  lb = [zeros(Nx*Nt); zeros(Nt); -max_roll*ones(Nt); kron(ones(Nt),umin-aeq)]
-  ub = [zeros(Nx*Nt); Inf*ones(Nt); max_roll*ones(Nt); kron(ones(Nt),umax-aeq)]
+  # constraints to keep quadrotor above ground
+  lb_floor = zeros(Nt)
+  ub_floor = Inf*ones(Nt)
+
+  # each part of rp needs to be between -1 and 1 to keep quadrotor euler angles between -90 and 90 degrees
+  lb_angle = -ones(Nt)
+  ub_angle = ones(Nt)
+
+  # thrust constraints
+  umin = [copy(quad.min_thrust) for i=1:Nu]
+  umax = [copy(quad.max_thrust) for i=1:Nu]
+  lb_thrust = kron(ones(Nt),umin)
+  ub_thrust = kron(ones(Nt),umax)
+
+  lb = [zeros(Nx*Nt); lb_floor; lb_angle; lb_thrust]
+  ub = [zeros(Nx*Nt); ub_floor; ub_angle; ub_thrust]
   
   Nd = length(ctrl.lb)
   if Nd == Nt*n
@@ -98,14 +104,14 @@ function buildQP_constrained!(ctrl::MPCController, A,B,Q,R,Qf; kwargs...)
   return nothing
 end
 
-function updateQP_constrained!(ctrl::MPCController, x, time, xeq)
+function updateQP_constrained!(ctrl::MPCController, x, time, Q, Qf, A)
   # TODO: Implement this method
   
   # SOLUTION
   t = get_k(ctrl, time)
   
   Nt = ctrl.Nmpc-1             # horizon
-  Nx = length(ctrl.Xref[1])    # number of states
+  Nx = length(ctrl.Xref[1]) - 1   # number of states in x̃
   Nu = length(ctrl.Uref[1])    # number of controls
   
   # Update QP problem
@@ -113,7 +119,7 @@ function updateQP_constrained!(ctrl::MPCController, x, time, xeq)
   lb = ctrl.lb
   ub = ctrl.ub
   xref = ctrl.Xref
-  xeq = Xref[end]
+  xeq = xref[end]
   N = length(ctrl.Xref)
   for t_h = 1:(Nt-1)
     if (t+t_h) <= N
@@ -161,23 +167,36 @@ function update_xref!(ctrl::MPCController, x, time, dt, xeq, time_eq)
   end
 end
 
-function simulate(model::Quadrotor, x0, ctrl; tf=ctrl.times[end], dt=1e-2)
-    n = 13
-    m = 4
-    times = range(0, tf, step=dt)
-    N = length(times)
-    X = [@SVector zeros(n) for k = 1:N] 
-    U = [@SVector zeros(m) for k = 1:N-1]
-    X[1] = x0
+function simulate(model::Quadrotor, x0, ctrl, Q, Qf, A; tf=ctrl.times[end], dt=2e-2)
+  n = 13
+  m = 4
+  times = range(0, tf, step=dt)
+  N = length(times)
+  X = [@SVector zeros(n) for k = 1:N] 
+  U = [@SVector zeros(m) for k = 1:N-1]
+  X[1] = x0
 
-    tstart = time_ns()
-    for k = 1:N-1
-      U[k] = get_control(ctrl, X[k], times[k])
-      # u = clamp(U[k], umin, umax)
-      X[k+1] = quad_dynamics_rk4(model, X[k], U[k], dt)
-    end
-    tend = time_ns()
-    rate = N / (tend - tstart) * 1e9
-    println("Controller ran at $rate Hz")
-    return X,U,times
+  tstart = time_ns()
+  for k = 1:N-1
+    U[k] = get_control(ctrl, X[k], times[k], Q, Qf, A)
+    # u = clamp(U[k], umin, umax)
+    X[k+1] = quad_dynamics_rk4(model, X[k], U[k], dt)
+  end
+  tend = time_ns()
+  rate = N / (tend - tstart) * 1e9
+  println("Controller ran at $rate Hz")
+  return X,U,times
+end
+
+function simulate_one_step(model::Quadrotor, x0, ctrl, Q, Qf, A, k; tf=ctrl.times[end], dt=2e-2)
+  times = range(0, tf, step=dt)
+
+  tstart = time_ns()
+  U = get_control(ctrl, x0, times[k], Q, Qf, A)
+  # u = clamp(U[k], umin, umax)
+  X = quad_dynamics_rk4(model, x0, U, dt)
+  tend = time_ns()
+  rate = (tend - tstart) * 1e9
+  println("Controller ran at $rate Hz")
+  return X,U,times
 end

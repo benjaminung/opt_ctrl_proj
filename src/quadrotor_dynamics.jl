@@ -63,7 +63,9 @@ function quad_dynamics_rk4(quad,x,u,h)
   f2 = quad_dynamics(quad, x + 0.5*h*f1, u)
   f3 = quad_dynamics(quad, x + 0.5*h*f2, u)
   f4 = quad_dynamics(quad, x + h*f3, u)
-  xn = x + (h/6.0)*(f1 + 2*f2 + 2*f3 + f4)
-  xn[4:7] .= xn[4:7]/norm(xn[4:7]) #re-normalize quaternion
+  # println(u)
+  xn = Vector(copy(x) + (h/6.0)*(f1 + 2*f2 + 2*f3 + f4))
+  xn[4:7] = xn[4:7]/norm(xn[4:7]) #re-normalize quaternion
+  # println(xn)
   return xn
 end
