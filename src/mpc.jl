@@ -28,7 +28,7 @@ function OSQPController(n::Integer, m::Integer, N::Integer, Nref::Integer=N, Nd:
   MPCController{OSQP.Model}(P,q, A,lb,ub, N, solver, Xref, Uref, tref)
 end
 
-function initialize_solver!(ctrl::MPCController{OSQP.Model}; tol=1e-6, verbose=true)
+function initialize_solver!(ctrl::MPCController{OSQP.Model}; tol=1e-6, verbose=false)
   OSQP.setup!(ctrl.solver, P=ctrl.P, q=ctrl.q, A=ctrl.A, l=ctrl.lb, u=ctrl.ub, 
       verbose=verbose, eps_rel=tol, eps_abs=tol, polish=1)
 end
@@ -167,7 +167,7 @@ function update_xref!(ctrl::MPCController, x, time, dt, xeq, time_eq)
   end
 end
 
-function simulate(model::Quadrotor, x0, ctrl, Q, Qf, A; tf=ctrl.times[end], dt=2e-2)
+function simulate(model::Quadrotor, x0, ctrl, Q, R, Qf, A, redTraj; tf=ctrl.times[end], dt=2e-2)
   n = 13
   m = 4
   times = range(0, tf, step=dt)
@@ -177,15 +177,28 @@ function simulate(model::Quadrotor, x0, ctrl, Q, Qf, A; tf=ctrl.times[end], dt=2
   X[1] = x0
 
   tstart = time_ns()
+  local intercept_k = 0
   for k = 1:N-1
+    ctrl.Xref[end][1:3] = get_intercept_point(redTraj[k])
+    A, B = get_Ã_B̃(model, ctrl.Xref[end], ctrl.Xref[end], ctrl.Uref[end], Q, R, dt)
+    buildQP_constrained!(model, ctrl, A, B, Q, R, Q)
     U[k] = get_control(ctrl, X[k], times[k], Q, Qf, A)
     # u = clamp(U[k], umin, umax)
     X[k+1] = quad_dynamics_rk4(model, X[k], U[k], dt)
+    intercepted = interception_check(X[k+1], redTraj[k])
+    if intercepted
+      intercept_k = k+1
+      break 
+    end
   end
   tend = time_ns()
   rate = N / (tend - tstart) * 1e9
   println("Controller ran at $rate Hz")
-  return X,U,times
+  if intercept_k > 0
+    println("INTERCEPTED @ t=", times[intercept_k])
+    return X[1:intercept_k], U[1:intercept_k-1], times[1:intercept_k], redTraj[1:intercept_k]
+  end
+  return X,U,times,redTraj
 end
 
 function simulate_one_step(model::Quadrotor, x0, ctrl, Q, Qf, A, k; tf=ctrl.times[end], dt=2e-2)
@@ -200,3 +213,19 @@ function simulate_one_step(model::Quadrotor, x0, ctrl, Q, Qf, A, k; tf=ctrl.time
   println("Controller ran at $rate Hz")
   return X,U,times
 end
+
+function get_intercept_point(x_red, distance=20.0)
+  red_pos = copy(x_red[1:3])
+  red_pos_unit = red_pos/norm(red_pos)
+  intercept_point = red_pos_unit*distance
+  return intercept_point
+end
+
+function interception_check(x_blue, x_red, tolerance=2.0)
+  dist = norm(x_blue[1:3]-x_red[1:3])
+  if dist < tolerance
+    return true
+  end
+  return false
+end
+  

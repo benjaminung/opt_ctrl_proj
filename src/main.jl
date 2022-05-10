@@ -11,11 +11,13 @@ red = Quadrotor()
 
 times = LinRange(0, 20, 1001)
 
+X_red = red_traj(red, times, zig_zag_z, 0.2, 6)
+
 blue_cost_Q̃ = Diagonal([10, 10, 10, 1, 1, 1, 10, 10, 10, 1, 1, 1])
 blue_cost_R = Diagonal([0.1, 0.1, 0.1, 0.1])
 
 x0_blue = [0.0, -5.0, 14.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-xeq_blue = [0.0, 14.142, 14.142, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+xeq_blue = [0.0, 20.0, 20.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 Xref_blue = [copy(xeq_blue) for i=1:length(times)]
 
 uhover_blue = [0.0, 0.0, 0.0, 0.0] .+ blue.m*blue.g/4.0
@@ -32,16 +34,14 @@ mpc_blue.times .= times
 mpc_blue.Xref .= Xref_blue
 mpc_blue.Uref .= Uref_blue
 
-A_blue, B_blue = get_Ã_B̃(red, mpc_blue.Xref[end], mpc_blue.Xref[end], mpc_blue.Uref[end], blue_cost_Q̃, blue_cost_R, dt)
+A_blue, B_blue = get_Ã_B̃(blue, mpc_blue.Xref[end], mpc_blue.Xref[end], mpc_blue.Uref[end], blue_cost_Q̃, blue_cost_R, dt)
 buildQP_constrained!(blue, mpc_blue, A_blue, B_blue, blue_cost_Q̃, blue_cost_R, blue_cost_Q̃)
-X_blue, U_blue, = simulate(blue, x0_blue, mpc_blue, blue_cost_Q̃, blue_cost_Q̃, A_blue)
+X_blue, U_blue, times_sim, X_red_sim = simulate(blue, x0_blue, mpc_blue, blue_cost_Q̃, blue_cost_R, blue_cost_Q̃, A_blue, X_red)
 
 x_next_test, u_test, = simulate_one_step(blue, x0_blue, mpc_blue, blue_cost_Q̃, blue_cost_Q̃, A_blue, 1)
 
-X_red = red_traj(red, times, zig_zag_z, 0.2, 6)
-
 vis = initialize_visualizer()
-visualize!(vis, times[end], X_blue, X_red)
+visualize!(vis, times_sim[end], X_blue, X_red_sim)
 
 #############
 x_red_next = copy(X_red[1])
