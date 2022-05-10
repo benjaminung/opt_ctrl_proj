@@ -35,10 +35,16 @@ function x_to_x̃(x)
   [x[1:3]; qtorp(x[4:7]); x[8:13]]
 end
 
-function body_to_world_vel(x)
-  Q = qtoQ(x[4:7])
-  v = x[8:10]
+function body_to_world_vel(vel, quat)
+  Q = qtoQ(quat)
+  v = vel
   return Q*v
+end
+
+function world_to_body_vel(vel, quat)
+  Q = qtoQ(quat)
+  v = vel
+  return Q'*v
 end
 
 function qtorp(q)

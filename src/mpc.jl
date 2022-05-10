@@ -44,7 +44,11 @@ function get_control(ctrl::MPCController{OSQP.Model}, x, time, Q, Qf, A)
   # println(Δu)
   
   k = get_k(ctrl, time)
-  return ctrl.Uref[end] + Δu 
+  u = ctrl.Uref[end] + Δu 
+  if maximum(isnan.(u))
+    u = ctrl.Uref[end]
+  end
+  return u
 end
 
 function buildQP_constrained!(quad::Quadrotor, ctrl::MPCController, A,B,Q,R,Qf; kwargs...)
@@ -171,9 +175,9 @@ function simulate(model::Quadrotor, x0, ctrl, Q, R, Qf, A, redTraj; tf=ctrl.time
   tstart = time_ns()
   local intercept_k = 0
   for k = 1:N-1
-    int_pos, int_vel = get_intercept_point_vel(redTraj[k])
+    int_pos, int_vel = get_intercept_point_vel(redTraj[k], ctrl.Xref[end][4:7])
     ctrl.Xref[end][1:3] = int_pos
-    ctrl.Xref[end][8:10] = int_vel
+    # ctrl.Xref[end][8:10] = int_vel
     A, B = get_Ã_B̃(model, ctrl.Xref[end], ctrl.Xref[end], ctrl.Uref[end], Q, R, dt)
     buildQP_constrained!(model, ctrl, A, B, Q, R, Q)
     U[k] = get_control(ctrl, X[k], times[k], Q, Qf, A)
@@ -207,17 +211,18 @@ function simulate_one_step(model::Quadrotor, x0, ctrl, Q, Qf, A, k; tf=ctrl.time
   return X,U,times
 end
 
-function get_intercept_point_vel(x_red, distance=20.0)
+function get_intercept_point_vel(x_red, quateq_blue, dt=0.02, distance=20.0)
   red_pos = copy(x_red[1:3])
-  red_world_vel = body_to_world_vel(x_red)
-  if norm(red_pos) > 20.0
+  red_world_vel = body_to_world_vel(x_red[8:10], x_red[4:7])
+  if norm(red_pos) > distance
     red_pos_unit = red_pos/norm(red_pos)
     intercept_point = red_pos_unit*distance
     intercept_vel = red_world_vel - red_pos_unit*dot(red_world_vel, red_pos_unit)
-    intercept_vel = intercept_vel * distance/norm(red_pos)
+    # intercept_vel = intercept_vel * distance/norm(red_pos)
+    intercept_point = intercept_point + intercept_vel*dt*50 
     return intercept_point, intercept_vel
   else
-    return red_pos, red_world_vel
+    return red_pos, [0, 0, 0]
   end
 end
 
