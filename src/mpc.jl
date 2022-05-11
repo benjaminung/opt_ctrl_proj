@@ -118,21 +118,9 @@ function updateQP_constrained!(ctrl::MPCController, x, time, Q, Qf, A)
   xeq = xref[end]
   N = length(ctrl.Xref)
   for t_h = 1:(Nt-1)
-    if (t+t_h) <= N
-      # b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*(xref[t+t_h] - xeq)
-      b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*x_to_x̃(xeq)
-    else
-      # b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*(xref[end] - xeq)
-      b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*x_to_x̃(xeq)
-    end
+    b[(Nu+(t_h-1)*(Nx+Nu)).+(1:Nx)] .= -Q*x_to_x̃(xeq)
   end
-  if (t+Nt) <= N
-    # b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*(xref[t+Nt] - xeq)
-    b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*x_to_x̃(xeq)
-  else
-    # b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*(xref[end] - xeq)
-    b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*x_to_x̃(xeq)
-  end
+  b[(Nu+(Nt-1)*(Nx+Nu)).+(1:Nx)] .= -Qf*x_to_x̃(xeq)
   
   # Update the initial condition
   lb[1:Nx] .= -A*x_to_x̃(x)
@@ -163,7 +151,7 @@ function update_xref!(ctrl::MPCController, x, time, dt, xeq, time_eq)
   end
 end
 
-function simulate(model::Quadrotor, x0, ctrl, Q, R, Qf, A, redTraj; tf=ctrl.times[end], dt=2e-2)
+function simulate(model::Quadrotor, x0, ctrl, Q, R, Qf, redTraj; tf=ctrl.times[end], dt=2e-2)
   n = 13
   m = 4
   times = range(0, tf, step=dt)
@@ -174,6 +162,7 @@ function simulate(model::Quadrotor, x0, ctrl, Q, R, Qf, A, redTraj; tf=ctrl.time
 
   tstart = time_ns()
   local intercept_k = 0
+  local closest_dist = 20.0
   for k = 1:N-1
     int_pos, int_vel = get_intercept_point_vel(redTraj[k], ctrl.Xref[end][4:7])
     ctrl.Xref[end][1:3] = int_pos
@@ -182,7 +171,7 @@ function simulate(model::Quadrotor, x0, ctrl, Q, R, Qf, A, redTraj; tf=ctrl.time
     buildQP_constrained!(model, ctrl, A, B, Q, R, Q)
     U[k] = get_control(ctrl, X[k], times[k], Q, Qf, A)
     X[k+1] = quad_dynamics_rk4(model, X[k], U[k], dt)
-    intercepted = interception_check(X[k+1], redTraj[k])
+    intercepted, closest_dist = interception_check(X[k+1], redTraj[k], closest_dist)
     if intercepted
       intercept_k = k+1
       break 
@@ -195,6 +184,7 @@ function simulate(model::Quadrotor, x0, ctrl, Q, R, Qf, A, redTraj; tf=ctrl.time
     println("INTERCEPTED @ t=", times[intercept_k])
     return X[1:intercept_k], U[1:intercept_k-1], times[1:intercept_k], redTraj[1:intercept_k]
   end
+  println("NOT INTERCEPTED, closest distance is: ", closest_dist)
   return X,U,times,redTraj
 end
 
@@ -219,18 +209,21 @@ function get_intercept_point_vel(x_red, quateq_blue, dt=0.02, distance=20.0)
     intercept_point = red_pos_unit*distance
     intercept_vel = red_world_vel - red_pos_unit*dot(red_world_vel, red_pos_unit)
     # intercept_vel = intercept_vel * distance/norm(red_pos)
-    intercept_point = intercept_point + intercept_vel*dt*50 
+    intercept_point = intercept_point + intercept_vel*2.0 
     return intercept_point, intercept_vel
   else
     return red_pos, [0, 0, 0]
   end
 end
 
-function interception_check(x_blue, x_red, tolerance=2.0)
+function interception_check(x_blue, x_red, closest_dist, tolerance=2.0)
   dist = norm(x_blue[1:3]-x_red[1:3])
-  if dist < tolerance
-    return true
+  if dist < closest_dist
+    closest_dist = dist
   end
-  return false
+  if dist < tolerance
+    return true, closest_dist
+  end
+  return false, closest_dist
 end
   
